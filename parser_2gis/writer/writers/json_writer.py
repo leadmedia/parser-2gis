@@ -47,7 +47,7 @@ class JSONWriter(FileWriter):
         Args:
             catalog_doc: Catalog Item API JSON document.
         """
-        if not self._check_catalog_doc(catalog_doc):
+        if not self._check_catalog_doc(catalog_doc, True):
             return
 
         self._writedoc(catalog_doc)

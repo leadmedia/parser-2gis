@@ -236,7 +236,7 @@ class MainParser:
                         try:
                             doc = json.loads(data)
                             if self.reviews:
-                                doc.update(json.loads(self.reviews))
+                                doc['result']['items'][0]['customer_reviews'] = self.reviews
                         except json.JSONDecodeError:
                             logger.error('Сервер вернул некорректный JSON документ: "%s", пропуск позиции.', data)
                             doc = None

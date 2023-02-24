@@ -233,7 +233,7 @@ class ChromeRemote:
             raise ChromeException(error_message)
 
     @wait_until_finished(timeout=30, throw_exception=False)
-    def wait_response(self, response_pattern: str, timeout = None) -> Response | None:
+    def wait_response(self, response_pattern: str) -> Response | None:
         """Wait for specified response with pre-defined pattern.
 
         Args:
@@ -246,10 +246,11 @@ class ChromeRemote:
         try:
             if self._chrome_tab._stopped.is_set():
                 raise pychrome.RuntimeException('Tab has been stopped')
-            return self._response_queues[response_pattern].get(block=False, timeout=timeout)
+            return self._response_queues[response_pattern].get(block=False)
         except queue.Empty:
             return None
-    @wait_until_finished(timeout=30, throw_exception=False)
+
+    @wait_until_finished(timeout=3, throw_exception=False)
     def wait_responses(self, response_pattern: str) -> Response | None:
         """Wait for specified response with pre-defined pattern.
 
@@ -373,8 +374,21 @@ class ChromeRemote:
         resolved_node = self._chrome_tab.DOM.resolveNode(backendNodeId=dom_node.backend_id)
         object_id = resolved_node['object']['objectId']
         self._chrome_tab.Runtime.callFunctionOn(objectId=object_id, functionDeclaration='''
-            (function() {console.log(this); this.lastChild.previousSibling.scrollIntoView(true); })
+            (function() {this.lastChild.previousSibling.scrollIntoView(true); })
         ''')
+
+    def get_html(self) -> str:
+        """Perform scroll of DOM node.
+
+        Args:
+            dom_node: DOMNode element.
+        """
+        # resolved_node = self._chrome_tab.DOM.resolveNode(backendNodeId=dom_node.backend_id)
+        # object_id = resolved_node['object']['objectId']
+        # self._chrome_tab.Runtime.callFunctionOn(objectId=object_id, functionDeclaration='''
+        #     (function() {this.lastChild.previousSibling.scrollIntoView(true); })
+        # ''')
+        return self._chrome_tab.Runtime.evaluate(expression="document.documentElement.outerHTML")
 
     def wait(self, timeout: float | None = None) -> None:
         """Idle for `timeout` seconds."""
