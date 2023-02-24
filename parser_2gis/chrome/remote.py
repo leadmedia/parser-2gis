@@ -233,7 +233,24 @@ class ChromeRemote:
             raise ChromeException(error_message)
 
     @wait_until_finished(timeout=30, throw_exception=False)
-    def wait_response(self, response_pattern: str) -> Response | None:
+    def wait_response(self, response_pattern: str, timeout = None) -> Response | None:
+        """Wait for specified response with pre-defined pattern.
+
+        Args:
+            timeout:
+            response_pattern: Repsonse URL pattern.
+
+        Returns:
+            Response or None in case of timeout.
+        """
+        try:
+            if self._chrome_tab._stopped.is_set():
+                raise pychrome.RuntimeException('Tab has been stopped')
+            return self._response_queues[response_pattern].get(block=False, timeout=timeout)
+        except queue.Empty:
+            return None
+    @wait_until_finished(timeout=30, throw_exception=False)
+    def wait_responses(self, response_pattern: str) -> Response | None:
         """Wait for specified response with pre-defined pattern.
 
         Args:
@@ -345,6 +362,18 @@ class ChromeRemote:
         object_id = resolved_node['object']['objectId']
         self._chrome_tab.Runtime.callFunctionOn(objectId=object_id, functionDeclaration='''
             (function() { this.scrollIntoView({ block: "center",  behavior: "instant" }); this.click(); })
+        ''')
+
+    def perform_scroll(self, dom_node: DOMNode) -> None:
+        """Perform scroll of DOM node.
+
+        Args:
+            dom_node: DOMNode element.
+        """
+        resolved_node = self._chrome_tab.DOM.resolveNode(backendNodeId=dom_node.backend_id)
+        object_id = resolved_node['object']['objectId']
+        self._chrome_tab.Runtime.callFunctionOn(objectId=object_id, functionDeclaration='''
+            (function() {console.log(this); this.lastChild.previousSibling.scrollIntoView(true); })
         ''')
 
     def wait(self, timeout: float | None = None) -> None:

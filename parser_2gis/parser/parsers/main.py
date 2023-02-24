@@ -10,6 +10,7 @@ from ...chrome import ChromeRemote
 from ...common import wait_until_finished
 from ...logger import logger
 from ..utils import blocked_requests
+from .reviews import ReviewsParser
 
 if TYPE_CHECKING:
     from ...chrome import ChromeOptions
@@ -31,8 +32,12 @@ class MainParser:
     def __init__(self, url: str,
                  chrome_options: ChromeOptions,
                  parser_options: ParserOptions) -> None:
+
+        self._chrome_options = chrome_options
         self._options = parser_options
         self._url = url
+        self.reviews_parser = ReviewsParser
+        self.reviews = None
 
         # "Catalog Item Document" response pattern.
         self._item_response_pattern = r'https://catalog\.api\.2gis.[^/]+/.*/items/byid'
@@ -60,6 +65,10 @@ class MainParser:
         """Extracts specific DOM node links from current DOM snapshot."""
         def valid_link(node: DOMNode) -> bool:
             if node.local_name == 'a' and 'href' in node.attributes:
+
+                if re.match(r'/[^/]+/[^/]+/.*/tab/reviews', node.attributes['href']):
+                    self.reviews = ReviewsParser('https://2gis.ru' + node.attributes['href'], self._chrome_options, self._options).parse()
+
                 link_match = re.match(r'.*/firm/.*\?stat=(?P<data>[a-zA-Z0-9%]+)', node.attributes['href'])
                 if link_match:
                     try:
@@ -67,7 +76,6 @@ class MainParser:
                         return True
                     except:
                         pass
-
             return False
 
         dom_tree = self._chrome_remote.get_document()
@@ -207,6 +215,8 @@ class MainParser:
                         # with a auth key and secret arguments
                         self._chrome_remote.perform_click(link)
 
+                        self._get_links()
+
                         # Delay between clicks, could be usefull if
                         # 2GIS's anti-bot service become more strict.
                         if self._options.delay_between_clicks:
@@ -225,6 +235,8 @@ class MainParser:
 
                         try:
                             doc = json.loads(data)
+                            if self.reviews:
+                                doc.update(json.loads(self.reviews))
                         except json.JSONDecodeError:
                             logger.error('Сервер вернул некорректный JSON документ: "%s", пропуск позиции.', data)
                             doc = None
