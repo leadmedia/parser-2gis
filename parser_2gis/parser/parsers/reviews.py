@@ -133,33 +133,12 @@ class ReviewsParser:
             if self._options.skip_404_response:
                 return
 
-        def load_reviews(get_init_html: bool = False):
+        def load_reviews():
             if self._options.delay_between_clicks:
                 self._chrome_remote.wait(self._options.delay_between_clicks / 1000)
 
             sidebar = self._get_sidebar()[0]
             self._chrome_remote.perform_scroll(sidebar)
-
-            # TODO сейчас парсятся либо отзывы либо только с севарка либо только со страницы, так же проверить что когда
-            # TODO загружаются только со страницы, все ли они там загружаются
-
-            # if get_init_html:
-            #     html = str(self._chrome_remote.get_html())
-            #     regex_json = r"var initialState = JSON\.parse\(\\'(.*?)\\'\);\s+window"
-            #     json_match = re.search(regex_json, html, re.DOTALL)
-            #
-            #     regex_reviews = r"(?<=\"objectSuggestions\":{},)(.*?),\"photo\":{},"
-            #     reviews_match = re.search(regex_reviews, json_match[1], re.DOTALL)
-            #
-            #     reviews_json = '{'+reviews_match[1]+'}'
-            #     reviews_json = reviews_json.replace("\r\n", "")
-            #     reviews_json = reviews_json.replace("\n", "")
-            #     reviews_json = reviews_json.replace('\\\\', "\\")
-            #     try:
-            #         logger.info(json.loads(reviews_json))
-            #     except:
-            #         return
-
 
             # Gather response and collect useful payload. Returns None after 3 seconds(means has no reviews to load)
             resp = self._chrome_remote.wait_responses(self._item_response_pattern)
@@ -172,16 +151,44 @@ class ReviewsParser:
 
             return data
 
+        def get_internal_reviews():
+            html = str(self._chrome_remote.get_html())
+            regex_json = r"var initialState = JSON\.parse\(\\'(.*?)\\'\);\s+window"
+            json_match = re.search(regex_json, html, re.DOTALL)
+
+            regex_reviews = r"(?<=\"objectSuggestions\":{},)(.*?),\"photo\":{},"
+            reviews_match = re.search(regex_reviews, json_match[1], re.DOTALL)
+
+            reviews_json = '{'+reviews_match[1]+'}'
+            reviews_json = reviews_json.replace("\r\n", "")
+            reviews_json = reviews_json.replace("\n", "")
+            reviews_json = reviews_json.replace('\\\\', "\\")
+
+            try:
+                return json.loads(reviews_json)['review']
+            except:
+                logger.info(reviews_json)
+                return None
+
         # Wait all 2GIS requests get finished
         self._wait_requests_finished()
 
         reviews = []
         get_init_html = True
         while True:
-            doc = load_reviews(get_init_html)
+            internal_reviews = None
+            if get_init_html:
+                internal_reviews = get_internal_reviews()
+            doc = load_reviews()
             get_init_html = False
             if not doc:
                 self._chrome_remote.stop()
                 return reviews
+
+            if internal_reviews:
+                logger.info('internal_reviews не None')
+                for user_id in internal_reviews:
+                    reviews.append(internal_reviews[user_id])
+                    logger.info('Получен отзыв при загрузке страницы')
             for review in json.loads(doc)['reviews']:
                 reviews.append(review)
