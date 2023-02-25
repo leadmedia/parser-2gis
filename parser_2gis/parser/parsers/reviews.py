@@ -163,11 +163,12 @@ class ReviewsParser:
             reviews_json = reviews_json.replace("\r\n", "")
             reviews_json = reviews_json.replace("\n", "")
             reviews_json = reviews_json.replace('\\\\', "\\")
+            reviews_json = reviews_json.replace('\'', "\"")
 
             try:
                 return json.loads(reviews_json)['review']
             except:
-                logger.info(reviews_json)
+                # logger.info(reviews_json)
                 return None
 
         # Wait all 2GIS requests get finished
@@ -179,16 +180,19 @@ class ReviewsParser:
             internal_reviews = None
             if get_init_html:
                 internal_reviews = get_internal_reviews()
+                get_init_html = False
             doc = load_reviews()
-            get_init_html = False
+
+            if internal_reviews:
+                for user_id in internal_reviews:
+                    reviews.append(internal_reviews[user_id])
+                    # logger.info(reviews)
+                    # logger.info('Получен отзыв при загрузке страницы')
+
+            if doc:
+                for review in json.loads(doc)['reviews']:
+                    reviews.append(review)
+
             if not doc:
                 self._chrome_remote.stop()
                 return reviews
-
-            if internal_reviews:
-                logger.info('internal_reviews не None')
-                for user_id in internal_reviews:
-                    reviews.append(internal_reviews[user_id])
-                    logger.info('Получен отзыв при загрузке страницы')
-            for review in json.loads(doc)['reviews']:
-                reviews.append(review)
