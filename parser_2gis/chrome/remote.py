@@ -41,18 +41,15 @@ class ChromeRemote:
         self._requests_lock = threading.Lock()
 
     @wait_until_finished(timeout=60)
-    def _connect_interface(self, port: int) -> bool:
+    def _connect_interface(self) -> bool:
         """Establish connection to Chrome and open new tab.
-
-        Args:
-            port: Remote's Chrome port.
 
         Returns:
             `True` on success, `False` on failure.
         """
         try:
-            self._chrome_interface = pychrome.Browser(url=f'http://127.0.0.1:{port}')
-            self._chrome_tab = self._chrome_interface.new_tab()
+            self._chrome_interface = pychrome.Browser(url=self._dev_url)
+            self._chrome_tab = self._create_tab()
             self._chrome_tab.start()
             return True
         except (RequestException, WebSocketException):
@@ -62,12 +59,23 @@ class ChromeRemote:
         """Open browser, create new tab, setup remote interface."""
         # Open browser
         self._chrome_browser = ChromeBrowser(self._chrome_options)
+        self._dev_url = f'http://127.0.0.1:{self._chrome_browser.remote_port}'
 
         # Connect browser with CDP
-        self._connect_interface(self._chrome_browser.remote_port)
-
+        self._connect_interface()
         self._setup_tab()
         self._init_tab_monitor()
+
+    def _create_tab(self) -> pychrome.Tab:
+        """Create Chrome Tab."""
+        resp = requests.put('%s/json/new' % (self._dev_url), json=True)         
+        return pychrome.Tab(**resp.json())
+
+    def _close_tab(self, tab: pychrome.Tab) -> None:
+        """Close Chrome Tab."""
+        if tab.status == pychrome.Tab.status_started:
+            tab.stop()
+        requests.put('%s/json/close/%s' % (self._dev_url, tab.id))
 
     def _setup_tab(self) -> None:
         """Hide webdriver, enable requests/response interception, fix UA."""
@@ -189,19 +197,22 @@ class ChromeRemote:
             like nothing bad happend, so we better monitor tabs index page
             and check if our tab is still alive."""
             while not self._chrome_tab._stopped.is_set():
-                ret = requests.get('%s/json' % self._chrome_interface.dev_url, json=True)
-                if not any(x['id'] == self._chrome_tab.id for x in ret.json()):
-                    nonlocal tab_detached
-                    tab_detached = True
-                    self._chrome_tab._stopped.set()
+                try:
+                    ret = requests.get('%s/json' % self._dev_url, json=True)
+                    if not any(x['id'] == self._chrome_tab.id for x in ret.json()):
+                        nonlocal tab_detached
+                        tab_detached = True
+                        self._chrome_tab._stopped.set()
 
-                self._chrome_tab._stopped.wait(0.5)
+                    self._chrome_tab._stopped.wait(0.5)
+                except ConnectionError:
+                    break
 
         self._ping_thread = threading.Thread(target=monitor_tab, daemon=True)
         self._ping_thread.start()
 
         def get_send_with_reraise() -> Callable[..., Any]:
-            """Reraise "Tab has been stopped" instead of `UserAbortException` in
+            """Re-raise "Tab has been stopped" instead of `UserAbortException` in
             case of tab detach detected."""
             original_send = self._chrome_tab._send
 
@@ -399,8 +410,7 @@ class ChromeRemote:
         # Close tab and browser
         if self._chrome_tab:
             try:
-                self._chrome_tab.stop()
-                self._chrome_interface.close_tab(self._chrome_tab)
+                self._close_tab(self._chrome_tab)
             except (pychrome.RuntimeException, RequestException):
                 pass
 
